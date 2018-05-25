@@ -1,24 +1,59 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-type book struct {
-	ISBN   string `json:"isbn"`
-	Title  string `json:"title"`
-	Author string `json:"author"`
+type Amount struct {
+	Currency   string `json:"currency"`
+	MinorUnits int    `json:"minorUnits"`
+}
+
+type WebHookPayload struct {
+	WebhookNotificationUID string    `json:"webhookNotificationUid"`
+	CustomerUID            string    `json:"customerUid"`
+	WebhookType            string    `json:"webhookType"`
+	EventUID               string    `json:"eventUid"`
+	TransactionAmount      Amount    `json:"transactionAmount"`
+	SourceAmount           Amount    `json:"sourceAmount"`
+	Direction              string    `json:"direction"`
+	Description            string    `json:"description"`
+	MerchantUID            string    `json:"merchantUid"`
+	MerchantLocationUID    string    `json:"merchantLocationUid"`
+	Status                 string    `json:"status"`
+	TransactionMethod      string    `json:"transactionMethod"`
+	TransactionTimestamp   time.Time `json:"transactionTimestamp"`
+	MerchantPosData        struct {
+		PosTimestamp       string `json:"posTimestamp"`
+		CardLast4          string `json:"cardLast4"`
+		AuthorisationCode  string `json:"authorisationCode"`
+		Country            string `json:"country"`
+		MerchantIdentifier string `json:"merchantIdentifier"`
+	} `json:"merchantPosData"`
 }
 
 func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	log.Println(request.Body)
+	wh := new(WebHookPayload)
+	err := json.Unmarshal([]byte(request.Body), &wh)
+	if err != nil {
+		return serverError(err)
+	}
 
-	// Return a response with a 200 OK status and the JSON book record
-	// as the body.
+	sig := request.Headers["X-Hook-Signature"]
+	log.Println("Signature:", sig)
+	log.Println("Body:", request.Body)
+
+	log.Println("Customer UID:", wh.CustomerUID)
+	log.Println("Method", wh.TransactionMethod)
+	log.Println("Amount", wh.TransactionAmount.MinorUnits, wh.TransactionAmount.Currency)
+	log.Println("Time", wh.TransactionTimestamp.Format(time.RFC3339Nano))
+
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
 		Body:       "",
