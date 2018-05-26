@@ -23,15 +23,15 @@ type WebHookPayload struct {
 	WebhookNotificationUID string    `json:"webhookNotificationUid"`
 	Timestamp              time.Time `json:"timestamp"`
 	Content                struct {
-		Class          string `json:"class"`
-		TransactionUID string `json:"transactionUid"`
-		Amount         int    `json:"amount"`
-		SourceCurrency string `json:"sourceCurrency"`
-		SourceAmount   int    `json:"sourceAmount"`
-		CounterParty   string `json:"counterParty"`
-		Reference      string `json:"reference"`
-		Type           string `json:"type"`
-		ForCustomer    string `json:"forCustomer"`
+		Class          string  `json:"class"`
+		TransactionUID string  `json:"transactionUid"`
+		Amount         float64 `json:"amount"`
+		SourceCurrency string  `json:"sourceCurrency"`
+		SourceAmount   float64 `json:"sourceAmount"`
+		CounterParty   string  `json:"counterParty"`
+		Reference      string  `json:"reference"`
+		Type           string  `json:"type"`
+		ForCustomer    string  `json:"forCustomer"`
 	} `json:"content"`
 	AccountHolderUID string `json:"accountHolderUid"`
 	WebhookType      string `json:"webhookType"`
@@ -80,6 +80,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	wh := new(WebHookPayload)
 	err = json.Unmarshal([]byte(request.Body), &wh)
 	if err != nil {
+		log.Println("ERROR failed to unmarshal body:", err)
 		return serverError(err)
 	}
 
@@ -92,6 +93,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	sb := newClient(ctx, token)
 	txn, _, err := sb.Transaction(ctx, wh.Content.TransactionUID)
 	if err != nil {
+		log.Println("ERROR failed to request transaction detail:", err)
 		return serverError(err)
 	}
 
