@@ -25,10 +25,11 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	svc := ssm.New(session.New())
 	swh := "starling-webhook-secret"
 	spt := "starling-personal-token"
+	gUID := "starling-savings-goal"
 
 	dec := true
 	paramsIn := ssm.GetParametersInput{
-		Names:          []*string{&swh, &spt},
+		Names:          []*string{&swh, &spt, &gUID},
 		WithDecryption: &dec,
 	}
 
@@ -44,6 +45,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 
 	secret := params[swh]
 	token := params[spt]
+	goal := params[gUID]
 
 	// Calculate the request signature
 	sha512 := sha512.New()
@@ -69,16 +71,49 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	log.Println("Amount:", wh.Content.Amount)
 	log.Println("Time:", wh.Timestamp.Format(time.RFC3339Nano))
 
+	// Don't round-up anything other than card transactions
+	if wh.Content.Type != "TRANSACTION_CARD" {
+		log.Println("Ignoring non-card transaction")
+		return success()
+	}
+
+	// Don't round-up incoming (i.e. positive) amounts
+	if wh.Content.Amount >= 0.0 {
+		log.Println("Ignoring inbound transaction")
+		return success()
+	}
+
+	// Round up to the nearest major unit
+	minorUnits := int64(wh.Content.Amount - 100)
+	ra := roundUp(minorUnits)
+	log.Println("Rounding up gives:", ra)
+
+	// Don't try and transfer a zero value to the savings goal
+	if ra == 0 {
+		return success()
+	}
+
+	// Transfer the funds to the savings goal
+	log.Println("Transfering to goal:", goal)
 	ctx := context.Background()
 	sb := newClient(ctx, token)
-	txn, _, err := sb.Transaction(ctx, wh.Content.TransactionUID)
+	amt := starling.Amount{
+		MinorUnits: ra,
+		Currency:   wh.Content.SourceCurrency,
+	}
+
+	txn, resp, err := sb.AddMoney(ctx, goal, amt)
 	if err != nil {
-		log.Println("ERROR failed to request transaction detail:", err)
+		log.Println("ERROR failed to move money to savings goal:", err)
+		log.Println("API returned:", resp.Status)
 		return serverError(err)
 	}
 
-	log.Println("Narrative:", txn.Narrative)
+	log.Println("Successful round-up:", txn)
+	return success()
+}
 
+func success() (events.APIGatewayProxyResponse, error) {
 	return events.APIGatewayProxyResponse{
 		StatusCode: http.StatusOK,
 		Body:       "",
@@ -110,4 +145,8 @@ func newClient(ctx context.Context, token string) *starling.Client {
 	baseURL, _ := url.Parse(starling.ProdURL)
 	opts := starling.ClientOptions{BaseURL: baseURL}
 	return starling.NewClientWithOptions(tc, opts)
+}
+
+func roundUp(txn int64) int64 {
+	return (txn/100)*100 - txn + 100
 }
