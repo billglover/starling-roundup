@@ -19,26 +19,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
-type WebHookPayload struct {
-	WebhookNotificationUID string    `json:"webhookNotificationUid"`
-	Timestamp              time.Time `json:"timestamp"`
-	Content                struct {
-		Class          string  `json:"class"`
-		TransactionUID string  `json:"transactionUid"`
-		Amount         float64 `json:"amount"`
-		SourceCurrency string  `json:"sourceCurrency"`
-		SourceAmount   float64 `json:"sourceAmount"`
-		CounterParty   string  `json:"counterParty"`
-		Reference      string  `json:"reference"`
-		Type           string  `json:"type"`
-		ForCustomer    string  `json:"forCustomer"`
-	} `json:"content"`
-	AccountHolderUID string `json:"accountHolderUid"`
-	WebhookType      string `json:"webhookType"`
-	CustomerUID      string `json:"customerUid"`
-	UID              string `json:"uid"`
-}
-
 func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	// Fetch the Personal Webhook Secret from the Parameter Store
@@ -77,7 +57,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 		return clientError(http.StatusBadRequest)
 	}
 
-	wh := new(WebHookPayload)
+	wh := new(starling.WebHookPayload)
 	err = json.Unmarshal([]byte(request.Body), &wh)
 	if err != nil {
 		log.Println("ERROR failed to unmarshal body:", err)
