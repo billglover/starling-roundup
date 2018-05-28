@@ -73,7 +73,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	log.Println("Time:", wh.Timestamp.Format(time.RFC3339Nano))
 
 	// Don't round-up anything other than card transactions
-	if wh.Content.Type != "TRANSACTION_CARD" {
+	if wh.Content.Type != "TRANSACTION_CARD" && wh.Content.Type != "TRANSACTION_MOBILE_WALLET" {
 		log.Println("Ignoring non-card transaction")
 		return success()
 	}
