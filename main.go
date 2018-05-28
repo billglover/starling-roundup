@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"time"
@@ -84,8 +85,8 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	}
 
 	// Round up to the nearest major unit
-	minorUnits := int64(wh.Content.Amount - 100)
-	ra := roundUp(minorUnits)
+	amtMinor := int64(math.Ceil(wh.Content.Amount * -100))
+	ra := roundUp(amtMinor)
 	log.Println("Rounding up gives:", ra)
 
 	// Don't try and transfer a zero value to the savings goal
@@ -148,5 +149,7 @@ func newClient(ctx context.Context, token string) *starling.Client {
 }
 
 func roundUp(txn int64) int64 {
-	return (txn/100)*100 - txn + 100
+	amtRound := (txn + 99) / 100 * 100
+	return amtRound - txn
+
 }
