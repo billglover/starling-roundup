@@ -9,7 +9,6 @@ import (
 	"math"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/billglover/starling"
 	"golang.org/x/oauth2"
@@ -20,23 +19,27 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
+func main() {
+	lambda.Start(handle)
+}
+
 func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
-	// Fetch the Personal Webhook Secret from the Parameter Store
+	// Fetch some details about your Starling account from AWS Parameter Store
 	svc := ssm.New(session.New())
 	swh := "starling-webhook-secret"
 	spt := "starling-personal-token"
 	gUID := "starling-savings-goal"
 
-	dec := true
+	decrypt := true
 	paramsIn := ssm.GetParametersInput{
 		Names:          []*string{&swh, &spt, &gUID},
-		WithDecryption: &dec,
+		WithDecryption: &decrypt,
 	}
 
 	paramsOut, err := svc.GetParameters(&paramsIn)
 	if err != nil {
-		log.Println(err)
+		log.Println("ERROR: unable to retrieve parameters:", err)
 		return serverError(err)
 	}
 	params := make(map[string]string, len(paramsOut.Parameters))
@@ -48,54 +51,50 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 	token := params[spt]
 	goal := params[gUID]
 
-	// Calculate the request signature
+	// Calculate the request signature and reject the request if it doesn't match the signature header
 	sha512 := sha512.New()
 	sha512.Write([]byte(secret + request.Body))
 	recSig := base64.StdEncoding.EncodeToString(sha512.Sum(nil))
 	reqSig := request.Headers["X-Hook-Signature"]
-
-	// Reject the request if it doesn't match the signature header
 	if reqSig != recSig {
 		log.Println("WARN: invalid request signature received")
 		return clientError(http.StatusBadRequest)
 	}
 
+	// Parse the contents of web hook payload and log pertinent items for debugging purposes
 	wh := new(starling.WebHookPayload)
 	err = json.Unmarshal([]byte(request.Body), &wh)
 	if err != nil {
-		log.Println("ERROR failed to unmarshal body:", err)
+		log.Println("ERROR: failed to unmarshal web hook payload:", err)
 		return serverError(err)
 	}
-
-	log.Println("Customer UID:", wh.CustomerUID)
-	log.Println("Type:", wh.Content.Type)
-	log.Println("Amount:", wh.Content.Amount)
-	log.Println("Time:", wh.Timestamp.Format(time.RFC3339Nano))
+	log.Println("INFO: type:", wh.Content.Type)
+	log.Println("INFO: amount:", wh.Content.Amount)
 
 	// Don't round-up anything other than card transactions
 	if wh.Content.Type != "TRANSACTION_CARD" && wh.Content.Type != "TRANSACTION_MOBILE_WALLET" {
-		log.Println("Ignoring non-card transaction")
+		log.Println("INFO: ignoring non-card transaction")
 		return success()
 	}
 
 	// Don't round-up incoming (i.e. positive) amounts
 	if wh.Content.Amount >= 0.0 {
-		log.Println("Ignoring inbound transaction")
+		log.Println("INFO: ignoring inbound transaction")
 		return success()
 	}
 
 	// Round up to the nearest major unit
 	amtMinor := int64(math.Ceil(wh.Content.Amount * -100))
 	ra := roundUp(amtMinor)
-	log.Println("Rounding up gives:", ra)
+	log.Println("INFO: round-up yields:", ra)
 
 	// Don't try and transfer a zero value to the savings goal
 	if ra == 0 {
+		log.Println("INFO: nothing to round-up")
 		return success()
 	}
 
 	// Transfer the funds to the savings goal
-	log.Println("Transfering to goal:", goal)
 	ctx := context.Background()
 	sb := newClient(ctx, token)
 	amt := starling.Amount{
@@ -105,12 +104,12 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 
 	txn, resp, err := sb.AddMoney(ctx, goal, amt)
 	if err != nil {
-		log.Println("ERROR failed to move money to savings goal:", err)
-		log.Println("API returned:", resp.Status)
+		log.Println("ERROR: failed to move money to savings goal:", err)
+		log.Println("ERROR: Starling Bank API returned:", resp.Status)
 		return serverError(err)
 	}
 
-	log.Println("Successful round-up:", txn)
+	log.Println("INFO: round-up successful:", txn)
 	return success()
 }
 
@@ -133,10 +132,6 @@ func clientError(status int) (events.APIGatewayProxyResponse, error) {
 		StatusCode: status,
 		Body:       http.StatusText(status),
 	}, nil
-}
-
-func main() {
-	lambda.Start(handle)
 }
 
 func newClient(ctx context.Context, token string) *starling.Client {
