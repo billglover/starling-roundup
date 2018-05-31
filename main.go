@@ -19,13 +19,20 @@ import (
 	"github.com/aws/aws-sdk-go/service/ssm"
 )
 
+var secret string
+var token string
+var goal string
+
 func main() {
+	err := requestParameters()
+	if err != nil {
+		log.Println("ERROR: unable to retrieve parameters:", err)
+		return
+	}
 	lambda.Start(handle)
 }
 
-func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-
-	// Fetch some details about your Starling account from AWS Parameter Store
+func requestParameters() error {
 	svc := ssm.New(session.New())
 	swh := "starling-webhook-secret"
 	spt := "starling-personal-token"
@@ -39,17 +46,21 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 
 	paramsOut, err := svc.GetParameters(&paramsIn)
 	if err != nil {
-		log.Println("ERROR: unable to retrieve parameters:", err)
-		return serverError(err)
+		return err
 	}
 	params := make(map[string]string, len(paramsOut.Parameters))
 	for _, p := range paramsOut.Parameters {
 		params[*p.Name] = *p.Value
 	}
 
-	secret := params[swh]
-	token := params[spt]
-	goal := params[gUID]
+	secret = params[swh]
+	token = params[spt]
+	goal = params[gUID]
+
+	return nil
+}
+
+func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 
 	// Calculate the request signature and reject the request if it doesn't match the signature header
 	sha512 := sha512.New()
@@ -63,7 +74,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 
 	// Parse the contents of web hook payload and log pertinent items for debugging purposes
 	wh := new(starling.WebHookPayload)
-	err = json.Unmarshal([]byte(request.Body), &wh)
+	err := json.Unmarshal([]byte(request.Body), &wh)
 	if err != nil {
 		log.Println("ERROR: failed to unmarshal web hook payload:", err)
 		return serverError(err)
