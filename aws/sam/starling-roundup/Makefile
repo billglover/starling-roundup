@@ -15,4 +15,4 @@ deploy:
 
 sam:
 	aws cloudformation deploy --region eu-west-2 --capabilities CAPABILITY_IAM --template-file /Users/bill/go/src/github.com/billglover/starling-roundup/aws/sam/starling-roundup/template.yaml --stack-name sam-demo
-	 aws cloudformation list-exports --region eu-west-2 --query "Exports[].Value" --no-paginate
+	aws cloudformation list-exports --region eu-west-2 --query "Exports[].Value" --no-paginate
