@@ -1,8 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
 Description: |
-  starling-roundup
-  Sample SAM Template for starling-roundup
+  Starling Bank transaction round-up application
 Globals:
   Function:
     Timeout: 3
@@ -10,17 +9,44 @@ Globals:
     Handler: main
     Runtime: go1.x
 
+Parameters: 
+  CodeBucketParameter: 
+    Type: String
+    Default: me.billglover.starling
+    Description: the s3 bucket where code packages are stored for Lambda functions
+  HookHandlerCodePackage:
+    Type: String
+    Default: hook.zip
+    Description: the package containing the code for the web-hook handler
+  RecordHandlerCodePackage:
+    Type: String
+    Default: record.zip
+    Description: the package containing the code for the record handler
+
 Resources:
+
+  # WebHookHandler handles inbound web-hook requests by writing them directly
+  # to a DynamoDB table. It returns success unless unable to write to the DB.
   WebHookHandler:
     Type: 'AWS::Serverless::Function'
     Properties:
       CodeUri:
-        Bucket: me.billglover.starling
-        Key: hook.zip
+        Bucket:
+          Ref: CodeBucketParameter
+        Key:
+          Ref: HookHandlerCodePackage
       Policies:
+        # access required to write records to the DB
         - DynamoDBCrudPolicy:
             TableName:
               Ref: Table
+        # access required to read values in the parameter store
+        - Statement:
+          - Effect: Allow
+            Action:
+              - 'ssm:GetParameter*'
+              - 'ssm:DescribeParameters'
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/starling-*"
       Events:
         CatchAll:
           Type: Api
@@ -33,21 +59,35 @@ Resources:
             Ref: Table
           STARLING_REGION:
             Ref: 'AWS::Region'
+
+  # RecordHandler handles changes to records in the transaction database, rounding
+  # them up where appropriate and moving the delta to a savings account.
   RecordHandler:
     Type: 'AWS::Serverless::Function'
     Properties:
       CodeUri:
-        Bucket: me.billglover.starling
-        Key: record.zip
+        Bucket:
+          Ref: CodeBucketParameter
+        Key:
+          Ref: RecordHandlerCodePackage
       Policies:
+        # access required to the DB event stream
         - DynamoDBStreamReadPolicy:
             TableName:
               Ref: Table
             StreamName: 
               Fn::GetAtt: [Table, StreamArn]
+        # access required to write records to the DB
         - DynamoDBCrudPolicy:
             TableName:
               Ref: Table
+        # access required to read values in the parameter store
+        - Statement:
+          - Effect: Allow
+            Action:
+              - 'ssm:GetParameter*'
+              - 'ssm:DescribeParameters'
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/starling-*"
       Events:
         Stream:
           Type: DynamoDB
@@ -56,6 +96,10 @@ Resources:
               Fn::GetAtt: [Table, StreamArn]
             BatchSize: 1
             StartingPosition: TRIM_HORIZON
+  
+  # Table is the DynamoDB table where inbound transactions are stored. An event stream
+  # is configured to allow processing to be triggered whenever a new or updated
+  # record gets written to the table.
   Table:
     Type: 'AWS::DynamoDB::Table'
     Properties:
@@ -77,8 +121,11 @@ Outputs:
     Value:
       'Fn::Sub': >-
         https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/callback/
-    Export:
-      Name: StarlingWebHook
-  MyStacksRegion:
+  WebHookHandlerFunction:
+    Description: The lambda function that handles the web-hook requests
     Value:
-      Ref: 'AWS::Region'
+      Ref: WebHookHandler
+  RecordHandlerFunction:
+    Description: The lambda function that handles the database records
+    Value:
+      Ref: RecordHandler
