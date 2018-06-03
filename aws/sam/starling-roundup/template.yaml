@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  starling-roundup
+  
+  Sample SAM Template for starling-roundup
+
+Globals:
+  Function:
+    Timeout: 3
+    MemorySize: 128
+    Handler: main
+    Runtime: go1.x
+
+Resources:
+  WebHookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri:
+        Bucket: me.billglover.starling
+        Key: hook.zip
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName:
+              Ref: Table
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /callback
+            Method: POST
+      Environment:
+        Variables:
+          STARLING_TABLE:
+            Ref: Table
+          STARLING_REGION:
+            Ref: AWS::Region
+
+  Table:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+       PrimaryKey:
+         Name: uid
+         Type: String
+       ProvisionedThroughput:
+         ReadCapacityUnits: 1
+         WriteCapacityUnits: 1
+
+Outputs:
+  WebHook:
+    Description: "The web-hook you need to provide to Starling Bank"
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/callback/
+    Export:
+      Name: StarlingWebHook
+  MyStacksRegion:
+      Value:
+        Ref: "AWS::Region"
