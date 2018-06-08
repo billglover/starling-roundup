@@ -12,3 +12,6 @@
 *.out
 
 bin/
+
+# Workspace settings
+.vscode
