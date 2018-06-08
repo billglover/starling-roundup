@@ -23,7 +23,7 @@ This implementation is targeted at Amazon's AWS Serverless Application Model (SA
 - `starling-personal-token` - used to request transfers to savings goal
 - `starling-savings-goal` - the identifier of the target savings goal
 
-**Why do you need the DynamoDB?** An early version of the solution didn't include a DynamoDB table. The first Lamda function was responsible for rounding-up transaction values and requesting the transfer to a savings goal. The DynamoDB was introduced because occasionally a web-hook would fire twice for the same transaction and the intermediary data store allows us to detect duplicate transactions and only perform the round-up once.
+**Why do you need the DynamoDB?** An early version of the solution didn't include a DynamoDB table. The first Lambda function was responsible for rounding-up transaction values and requesting the transfer to a savings goal. The DynamoDB was introduced because occasionally a web-hook would fire twice for the same transaction and the intermediary data store allows us to detect duplicate transactions and only perform the round-up once.
 
 ## Installation
 
