@@ -113,7 +113,7 @@ func handle(request events.APIGatewayProxyRequest) (events.APIGatewayProxyRespon
 		Currency:   wh.Content.SourceCurrency,
 	}
 
-	txn, resp, err := sb.AddMoney(ctx, goal, amt)
+	txn, resp, err := sb.TransferToSavingsGoal(ctx, goal, amt)
 	if err != nil {
 		log.Println("ERROR: failed to move money to savings goal:", err)
 		log.Println("ERROR: Starling Bank API returned:", resp.Status)
